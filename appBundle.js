@@ -3,10 +3,10 @@
  * SDK version: 4.6.1
  * CLI version: 2.11.0
  * 
- * Generated: Sun, 09 Jul 2023 17:48:56 GMT
+ * Generated: Sun, 09 Jul 2023 17:55:25 GMT
  */
 
-var APP_MyMovieApp = (function (ui) {
+var APP_MyMovieApp = (function () {
   'use strict';
 
   /*
@@ -6337,6 +6337,2862 @@ var APP_MyMovieApp = (function (ui) {
    * See the License for the specific language governing permissions and
    * limitations under the License.
    */
+  class CollectionWrapper extends Lightning.Component {
+    static _template() {
+      return {
+        Wrapper: {}
+      };
+    }
+    _construct() {
+      this._direction = CollectionWrapper.DIRECTION.row;
+      this._scrollTransitionSettings = this.stage.transitions.createSettings({});
+      this._spacing = 0;
+      this._autoResize = false;
+      this._requestingItems = false;
+      this._requestThreshold = 1;
+      this._requestsEnabled = false;
+      this._gcThreshold = 5;
+      this._gcIncrement = 0;
+      this._forceLoad = false;
+      this.clear();
+    }
+    _setup() {
+      this._updateScrollTransition();
+    }
+    _updateScrollTransition() {
+      const axis = this._direction === 1 ? 'y' : 'x';
+      this.wrapper.transition(axis, this._scrollTransitionSettings);
+      this._scrollTransition = this.wrapper.transition(axis);
+    }
+    _indexChanged(obj) {
+      let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      let {
+        index: target,
+        dataLength: max,
+        mainIndex,
+        previousMainIndex,
+        lines
+      } = obj;
+      if (!isNaN(previousMainIndex) && !isNaN(mainIndex) && !isNaN(lines)) {
+        target = mainIndex;
+        max = lines;
+      }
+      if (this._requestsEnabled && !this._requestingItems) {
+        if (target + this._requestThreshold >= max) {
+          this.requestItems(false, obj);
+        }
+      }
+      this._refocus();
+      this.scrollCollectionWrapper(obj, options);
+      if (obj.previousIndex !== obj.index) {
+        this.signal('onIndexChanged', obj);
+      }
+    }
+    requestItems() {
+      let reload = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : false;
+      let obj = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : undefined;
+      if (obj === undefined) {
+        obj = {
+          previousIndex: 0,
+          index: this._index,
+          mainIndex: this._mainIndex || 0,
+          previousMainIndex: this._mainIndex || 0,
+          crossIndex: this._crossIndex || 0,
+          previousCrossIndex: this._crossIndex || 0,
+          lines: this._lines && this._lines.length || 0,
+          dataLength: this._items && this._items.length || 0
+        };
+      }
+      this._requestingItems = true;
+      this._request(obj).then(response => {
+        this._requestingItems = false;
+        if (reload) {
+          this.clear();
+        }
+        const type = typeof response;
+        if (Array.isArray(response) && response.length > 0 || type === 'object' || type === 'string' || type === 'number') {
+          this.add(response);
+          obj.dataLength = this._items && this._items.length || 0;
+          this.signal('onRequestItemsAdded', obj);
+        }
+      });
+    }
+    _request(obj) {
+      return new Promise(resolve => {
+        this.signal('onRequestItems', obj).then(response => {
+          if (response === undefined || response === false || Array.isArray(response) && response.length === 0) {
+            this.enableRequests = false;
+          }
+          resolve(response);
+        });
+      });
+    }
+    _requestMore(index) {
+      var _this = this;
+      let data = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : [];
+      let options = arguments.length > 2 ? arguments[2] : undefined;
+      const obj = {
+        previousIndex: this._index,
+        index,
+        mainIndex: this._mainIndex || 0,
+        previousMainIndex: this._previous && this._previous.mainIndex || 0,
+        crossIndex: this._crossIndex || 0,
+        previousCrossIndex: this._previous && this._previous.crossIndex || 0,
+        lines: this._lines && this._lines.length || 0,
+        dataLength: data.length + (this._items && this._items.length || 0)
+      };
+      this._requestingItems = true;
+      return new Promise(resolve => {
+        this._request(obj).then(function () {
+          let response = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : [];
+          if (response) {
+            const newData = [...data, ...response];
+            if (index > _this._items.length + newData.length) {
+              _this._requestMore(index, newData).then(resolve);
+            } else {
+              _this.add(newData);
+              obj.dataLength = _this._items && _this._items.length || 0;
+              _this.signal('onRequestItemsAdded', obj);
+              _this._requestingItems = false;
+              _this.setIndex(index, options);
+              resolve(true);
+            }
+          } else {
+            _this._requestingItems = false;
+            resolve(false);
+          }
+        });
+      });
+    }
+    setIndex(index) {
+      let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      if (this._requestsEnabled && index > this._items.length - 1) {
+        if (!this._requestingItems) {
+          this._requestMore(index, [], options);
+        }
+        return true;
+      }
+      if (this._items.length === 0) {
+        this._index = 0;
+        return false;
+      }
+      const targetIndex = limitWithinRange(index, 0, this._items.length - 1);
+      const previousIndex = this._index;
+      this._index = targetIndex;
+      this._indexChanged({
+        previousIndex,
+        index: targetIndex,
+        dataLength: this._items.length
+      }, options);
+      return previousIndex !== targetIndex;
+    }
+    clear() {
+      this._uids = [];
+      this._items = [];
+      this._index = 0;
+      if (this._scrollTransition) {
+        this._scrollTransition.reset(0, 1);
+      }
+      if (this.wrapper) {
+        const hadChildren = this.wrapper.children.length > 0;
+        this.wrapper.patch({
+          x: 0,
+          y: 0,
+          children: []
+        });
+        if (hadChildren) {
+          this._collectGarbage(true);
+        }
+      }
+    }
+    add(item) {
+      let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      this.addAt(item, this._items.length, options);
+    }
+    addAt(item) {
+      let index = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : this._items.length;
+      let options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      if (index >= 0 && index <= this._items.length) {
+        if (!Array.isArray(item)) {
+          item = [item];
+        }
+        const items = this._normalizeDataItems(item);
+        this._items.splice(index, 0, ...items);
+        this.plotItems(options);
+        const targetIndex = index < this._index ? this._index + items.length : this._index;
+        this.setIndex(targetIndex, options);
+      } else {
+        throw new Error('addAt: The index ' + index + ' is out of bounds ' + this._items.length);
+      }
+    }
+    remove(target) {
+      let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      if (this.hasItems && target.assignedID) {
+        const itemWrappers = this.itemWrappers;
+        for (let i = 0; i < this._items.length; i++) {
+          let item = this._items[i];
+          if (itemWrappers[i] && itemWrappers[i].component.isAlive) {
+            item = itemWrappers[i].component;
+          }
+          if (target.assignedID === item.assignedID) {
+            if (i === this._items.length - 1 && item.hasFocus()) {
+              this._index = this._index - 1;
+            }
+            return this.removeAt(i, 1, options);
+          }
+        }
+      } else {
+        throw new Error('remove: item not found');
+      }
+    }
+    removeAt(index) {
+      let amount = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : 1;
+      let options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      if (index < 0 && index >= this._items.length) {
+        throw new Error('removeAt: The index ' + index + ' is out of bounds ' + this._items.length);
+      }
+      const item = this._items[index];
+      this._items.splice(index, amount);
+      if (this._items.length > 0) {
+        this.plotItems(options);
+      }
+      this.setIndex(this.index);
+      return item;
+    }
+    reload(item) {
+      this.clear();
+      this.add(item);
+    }
+    plotItems() {
+    } //placeholder
+
+    reposition() {
+      let time = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 70;
+      if (this._repositionDebounce) {
+        clearTimeout(this._repositionDebounce);
+      }
+      this._repositionDebounce = setTimeout(() => {
+        this.repositionItems();
+      }, time);
+    }
+    repositionItems() {
+      //placeHolder
+      this.signal('onItemsRepositioned');
+    }
+    up() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      return this._attemptNavigation(-1, 1, options);
+    }
+    down() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      return this._attemptNavigation(1, 1, options);
+    }
+    left() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      return this._attemptNavigation(-1, 0, options);
+    }
+    right() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      return this._attemptNavigation(1, 0, options);
+    }
+    first() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      return this.setIndex(0, options);
+    }
+    last() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      return this.setIndex(this._items.length - 1, options);
+    }
+    next() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      return this.setIndex(this._index + 1, options);
+    }
+    previous() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      return this.setIndex(this._index - 1, options);
+    }
+    _attemptNavigation(shift, direction) {
+      let options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      if (this.hasItems) {
+        return this.navigate(shift, direction, options);
+      }
+      return false;
+    }
+    navigate(shift) {
+      let direction = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : this._direction;
+      let options = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+      if (direction !== this._direction) {
+        return false;
+      }
+      return this.setIndex(this._index + shift, options);
+    }
+    scrollCollectionWrapper(obj) {
+      let options = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : {};
+      const {
+        immediate = false
+      } = options;
+      let {
+        previousIndex: previous,
+        index: target,
+        dataLength: max,
+        mainIndex,
+        previousMainIndex,
+        lines
+      } = obj;
+      if (!isNaN(previousMainIndex) && !isNaN(mainIndex) && !isNaN(lines)) {
+        previous = previousMainIndex;
+        target = mainIndex;
+        max = lines;
+      }
+      const {
+        directionIsRow,
+        main,
+        mainDim,
+        mainMarginFrom,
+        mainMarginTo
+      } = this._getPlotProperties(this._direction);
+      const cw = this.currentItemWrapper;
+      let bound = this[mainDim];
+      if (bound === 0) {
+        bound = directionIsRow ? 1920 : 1080;
+      }
+      const offset = Math.min(this.wrapper[main], this._scrollTransition && this._scrollTransition.targetValue || 0);
+      const sizes = this._getItemSizes(cw);
+      const marginFrom = sizes[mainMarginFrom] || sizes.margin || 0;
+      const marginTo = sizes[mainMarginTo] || sizes.margin || 0;
+      let scroll = this._scroll;
+      if (!isNaN(scroll)) {
+        if (scroll >= 0 && scroll <= 1) {
+          scroll = bound * scroll - (cw[main] + cw[mainDim] * scroll);
+        } else {
+          scroll = scroll - cw[main];
+        }
+      } else if (typeof scroll === 'function') {
+        scroll = scroll.apply(this, [cw, obj]);
+      } else if (typeof scroll === 'object') {
+        const {
+          jump = false,
+          after = false,
+          backward = 0.0,
+          forward = 1.0
+        } = scroll;
+        if (jump) {
+          let mod = target % jump;
+          if (mod === 0) {
+            scroll = marginFrom - cw[main];
+          }
+          if (mod === jump - 1) {
+            const actualSize = marginFrom + cw[mainDim] + marginTo;
+            scroll = mod * actualSize + marginFrom - cw[main];
+          }
+        } else if (after) {
+          scroll = 0;
+          if (target >= after - 1) {
+            const actualSize = marginFrom + cw[mainDim] + marginTo;
+            scroll = (after - 1) * actualSize + marginFrom - cw[main];
+          }
+        } else {
+          const backwardBound = bound * this._normalizePixelToPercentage(backward, bound);
+          const forwardBound = bound * this._normalizePixelToPercentage(forward, bound);
+          if (target < max - 1 && previous < target && offset + cw[main] + cw[mainDim] > forwardBound) {
+            scroll = forwardBound - (cw[main] + cw[mainDim]);
+          } else if (target > 0 && target < previous && offset + cw[main] < backwardBound) {
+            scroll = backwardBound - cw[main];
+          } else if (target === max - 1) {
+            scroll = bound - (cw[main] + cw[mainDim]);
+          } else if (target === 0) {
+            scroll = marginFrom - cw[main];
+          }
+        }
+      } else if (isNaN(scroll)) {
+        if (previous < target && offset + cw[main] + cw[mainDim] > bound) {
+          scroll = bound - (cw[main] + cw[mainDim]);
+        } else if (target < previous && offset + cw[main] < 0) {
+          scroll = marginFrom - cw[main];
+        }
+      }
+      if (!immediate && this.active && !isNaN(scroll) && this._scrollTransition) {
+        if (this._scrollTransition.isRunning()) {
+          this._scrollTransition.reset(scroll, 0.05);
+        } else {
+          this._scrollTransition.start(scroll);
+        }
+      } else if (!isNaN(scroll)) {
+        this.wrapper[main] = scroll;
+      }
+    }
+    $childInactive(_ref) {
+      let {
+        child
+      } = _ref;
+      if (typeof child === 'object') {
+        const index = child.componentIndex;
+        for (let key in this._items[index]) {
+          if (child.component[key] !== undefined) {
+            this._items[index][key] = child.component[key];
+          }
+        }
+      }
+      this._collectGarbage();
+    }
+    $getChildComponent(_ref2) {
+      let {
+        index
+      } = _ref2;
+      return this._items[index];
+    }
+    _resizeWrapper(crossSize) {
+      let obj = crossSize;
+      if (!isNaN(crossSize)) {
+        const {
+          main,
+          mainDim,
+          crossDim
+        } = this._getPlotProperties(this._direction);
+        const lastItem = this.wrapper.childList.last;
+        obj = {
+          [mainDim]: lastItem[main] + lastItem[mainDim],
+          [crossDim]: crossSize
+        };
+      }
+      this.wrapper.patch(obj);
+      if (this._autoResize) {
+        this.patch(obj);
+      }
+    }
+    _generateUniqueID() {
+      let id = '';
+      while (this._uids[id] || id === '') {
+        id = Math.random().toString(36).substring(2, 9);
+      }
+      this._uids[id] = true;
+      return id;
+    }
+    _getPlotProperties(direction) {
+      const directionIsRow = direction === 0;
+      return {
+        directionIsRow: directionIsRow ? true : false,
+        mainDirection: directionIsRow ? 'rows' : 'columns',
+        main: directionIsRow ? 'x' : 'y',
+        mainDim: directionIsRow ? 'w' : 'h',
+        mainMarginTo: directionIsRow ? 'marginRight' : 'marginBottom',
+        mainMarginFrom: directionIsRow ? 'marginLeft' : 'marginTop',
+        crossDirection: !directionIsRow ? 'columns' : 'rows',
+        cross: directionIsRow ? 'y' : 'x',
+        crossDim: directionIsRow ? 'h' : 'w',
+        crossMarginTo: directionIsRow ? 'marginBottom' : 'marginRight',
+        crossMarginFrom: directionIsRow ? 'marginTop' : 'marginLeft'
+      };
+    }
+    _getItemSizes(item) {
+      const itemType = item.type;
+      if (item.component && item.component.__attached) {
+        item = item.component;
+      }
+      return {
+        w: item.w || itemType && itemType['width'],
+        h: item.h || itemType && itemType['height'],
+        margin: item.margin || itemType && itemType['margin'] || 0,
+        marginLeft: item.marginLeft || itemType && itemType['marginLeft'],
+        marginRight: item.marginRight || itemType && itemType['marginRight'],
+        marginTop: item.marginTop || itemType && itemType['marginTop'],
+        marginBottom: item.marginBottom || itemType && itemType['marginBottom']
+      };
+    }
+    _collectGarbage(immediate) {
+      this._gcIncrement++;
+      if (immediate || this.active && this._gcThreshold !== 0 && this._gcIncrement >= this._gcThreshold) {
+        this._gcIncrement = 0;
+        this.stage.gc();
+      }
+    }
+    _normalizeDataItems(array) {
+      return array.map((item, index) => {
+        return this._normalizeDataItem(item) || index;
+      }).filter(item => {
+        if (!isNaN(item)) {
+          console.warn("Item at index: ".concat(item, ", is not a valid item. Removing it from dataset"));
+          return false;
+        }
+        return true;
+      });
+    }
+    _normalizeDataItem(item, index) {
+      if (typeof item === 'string' || typeof item === 'number') {
+        item = {
+          label: item.toString()
+        };
+      }
+      if (typeof item === 'object') {
+        let id = this._generateUniqueID();
+        return {
+          assignedID: id,
+          type: this.itemType,
+          collectionWrapper: this,
+          isAlive: false,
+          ...item
+        };
+      }
+      return index;
+    }
+    _normalizePixelToPercentage(value, max) {
+      if (value && value > 1) {
+        return value / max;
+      }
+      return value || 0;
+    }
+    _getFocused() {
+      if (this.hasItems) {
+        return this.currentItemWrapper;
+      }
+      return this;
+    }
+    _handleRight() {
+      return this.right();
+    }
+    _handleLeft() {
+      return this.left();
+    }
+    _handleUp() {
+      return this.up();
+    }
+    _handleDown() {
+      return this.down();
+    }
+    _inactive() {
+      if (this._repositionDebounce) {
+        clearTimeout(this._repositionDebounce);
+      }
+      this._collectGarbage(true);
+    }
+    static get itemType() {
+      return undefined;
+    }
+    set forceLoad(bool) {
+      this._forceLoad = bool;
+    }
+    get forceLoad() {
+      return this._forceLoad;
+    }
+    get requestingItems() {
+      return this._requestingItems;
+    }
+    set requestThreshold(num) {
+      this._requestThreshold = num;
+    }
+    get requestThreshold() {
+      return this._requestThreshold;
+    }
+    set enableRequests(bool) {
+      this._requestsEnabled = bool;
+    }
+    get enableRequests() {
+      return this._requestsEnabled;
+    }
+    set gcThreshold(num) {
+      this._gcThreshold = num;
+    }
+    get gcThreshold() {
+      return this._gcThreshold;
+    }
+    get wrapper() {
+      return this.tag('Wrapper');
+    }
+    get hasItems() {
+      return this.wrapper && this.wrapper.children && this.wrapper.children.length > 0;
+    }
+    get currentItemWrapper() {
+      return this.wrapper.children[this._index];
+    }
+    get currentItem() {
+      return this.currentItemWrapper && this.currentItemWrapper.component || undefined;
+    }
+    set direction(string) {
+      this._direction = CollectionWrapper.DIRECTION[string] || CollectionWrapper.DIRECTION.row;
+    }
+    get direction() {
+      return Object.keys(CollectionWrapper.DIRECTION)[this._direction];
+    }
+    set items(array) {
+      this.clear();
+      this.add(array);
+    }
+    get items() {
+      const itemWrappers = this.itemWrappers;
+      return this._items.map((item, index) => {
+        if (itemWrappers[index] && itemWrappers[index].component.isAlive) {
+          return itemWrappers[index].component;
+        }
+        return item;
+      });
+    }
+    get length() {
+      return this._items.length;
+    }
+    set index(index) {
+      this.setIndex(index);
+    }
+    get itemWrappers() {
+      return this.wrapper.children;
+    }
+    get index() {
+      return this._index;
+    }
+    set scrollTransition(obj) {
+      this._scrollTransitionSettings.patch(obj);
+      if (this.active) {
+        this._updateScrollTransition();
+      }
+    }
+    get scrollTransition() {
+      return this._scrollTransition;
+    }
+    set scroll(value) {
+      this._scroll = value;
+    }
+    get scroll() {
+      return this._scroll;
+    }
+    set autoResize(bool) {
+      this._autoResize = bool;
+    }
+    get autoResize() {
+      return this._autoResize;
+    }
+    set spacing(num) {
+      this._spacing = num;
+    }
+    get spacing() {
+      return this._spacing;
+    }
+  }
+  CollectionWrapper.DIRECTION = {
+    row: 0,
+    column: 1
+  };
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class Cursor extends Lightning.Component {
+    static _template() {
+      return {
+        alpha: 0
+      };
+    }
+    _construct() {
+      this._blink = true;
+    }
+    _init() {
+      this._blinkAnimation = this.animation({
+        duration: 1,
+        repeat: -1,
+        actions: [{
+          p: 'alpha',
+          v: {
+            0: 0,
+            0.5: 1,
+            1: 0
+          }
+        }]
+      });
+    }
+    show() {
+      if (this._blink) {
+        this._blinkAnimation.start();
+      } else {
+        this.alpha = 1;
+      }
+    }
+    hide() {
+      if (this._blink) {
+        this._blinkAnimation.stop();
+      } else {
+        this.alpha = 0;
+      }
+    }
+    set blink(bool) {
+      this._blink = bool;
+      if (this.active) {
+        if (bool) {
+          this.show();
+        } else {
+          this.hide();
+        }
+      }
+    }
+    get blink() {
+      return this._blink;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class ItemWrapper$1 extends Lightning.Component {
+    static _template() {
+      return {
+        clipbox: true
+      };
+    }
+    create() {
+      if (this.children.length > 0) {
+        return;
+      }
+      const component = this.fireAncestors('$getChildComponent', {
+        index: this.componentIndex
+      });
+      component.isAlive = true;
+      const {
+        w,
+        h,
+        margin,
+        marginTop,
+        marginBottom,
+        marginRight,
+        marginLeft
+      } = this;
+      this.children = [{
+        ...component,
+        w,
+        h,
+        margin,
+        marginTop,
+        marginRight,
+        marginLeft,
+        marginBottom
+      }];
+      if (this.hasFocus()) {
+        this._refocus();
+      }
+    }
+    get component() {
+      return this.children[0] || this.fireAncestors('$getChildComponent', {
+        index: this.componentIndex
+      });
+    }
+    _setup() {
+      if (this.forceLoad) {
+        this.create();
+      }
+    }
+    _active() {
+      this.create();
+    }
+    _inactive() {
+      if (!this.forceLoad) {
+        this.children[0].isAlive = false;
+        this.fireAncestors('$childInactive', {
+          child: this
+        });
+        this.childList.clear();
+      }
+    }
+    _getFocused() {
+      return this.children && this.children[0] || this;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class KeyWrapper extends Lightning.Component {
+    static _template() {
+      return {
+        clipbox: true
+      };
+    }
+    _update() {
+      let currentKey = this.children && this.children[0];
+      if (currentKey && currentKey.action === this._key.data.action) {
+        currentKey.patch({
+          ...this._key
+        });
+      } else {
+        this.children = [{
+          type: this._key.keyType,
+          ...this._key
+        }];
+      }
+      if (this.hasFocus()) {
+        this._refocus();
+      }
+    }
+    set key(obj) {
+      this._key = obj;
+      if (this.active) {
+        this._update();
+      }
+    }
+    get key() {
+      return this._key;
+    }
+    _active() {
+      this._update();
+    }
+    _inactive() {
+      this.childList.clear();
+    }
+    _getFocused() {
+      return this.children && this.children[0] || this;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  const limitWithinRange = (num, min, max) => {
+    return Math.min(Math.max(num, min), max);
+  };
+  const defineProperties = (component, props) => {
+    props.forEach(prop => {
+      Object.defineProperty(component, prop, {
+        set: function (value) {
+          component["_".concat(prop)] = value;
+        },
+        get: function () {
+          return component["_".concat(prop)];
+        }
+      });
+    });
+  };
+  const findIndexOfObject = (array, search, targetProp) => {
+    for (let i = 0; i < array.length; i++) {
+      if (array[i][targetProp] === search) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class InputField extends Lightning.Component {
+    static _template() {
+      return {
+        PreLabel: {
+          renderOffscreen: true
+        },
+        PostLabel: {
+          renderOffscreen: true
+        },
+        Cursor: {
+          type: Cursor,
+          rect: true,
+          w: 4,
+          h: 54,
+          x: 0,
+          y: 0
+        }
+      };
+    }
+    _construct() {
+      this._input = '';
+      this._previousInput = '';
+      this._description = '';
+      this._cursorX = 0;
+      this._cursorIndex = 0;
+      this._passwordMask = '*';
+      this._passwordMode = false;
+      this._autoHideCursor = true;
+      this._labelPositionStatic = true;
+      this._maxLabelWidth = 0;
+    }
+    _init() {
+      this.tag('PreLabel').on('txLoaded', () => {
+        this._labelTxLoaded();
+      });
+      this.tag('PostLabel').on('txLoaded', () => {
+        this._labelTxLoaded;
+      });
+    }
+    onInputChanged(_ref) {
+      let {
+        input = ''
+      } = _ref;
+      let targetIndex = Math.max(input.length - this._input.length + this._cursorIndex, 0);
+      this._input = input;
+      this._update(targetIndex);
+    }
+    toggleCursor() {
+      let bool = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : !this._cursorVisible;
+      this._cursorVisible = bool;
+      this.cursor[bool ? 'show' : 'hide']();
+    }
+    _labelTxLoaded() {
+      const preLabel = this.tag('PreLabel');
+      const cursor = this.tag('Cursor');
+      const postLabel = this.tag('PostLabel');
+      this.h = preLabel.renderHeight || postLabel.renderHeight;
+      cursor.x = preLabel.renderWidth + this._cursorX;
+      postLabel.x = cursor.x + cursor.w * (1 - cursor.mountX);
+      this.setSmooth('x', this._labelOffset);
+      if (!this.autoHideCursor) {
+        this.toggleCursor(true);
+      }
+    }
+    _update() {
+      let index = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : 0;
+      const hasInput = this._input.length > 0;
+      let pre = this._description + '';
+      let post = '';
+      if (hasInput) {
+        pre = this._input.substring(0, index);
+        post = this._input.substring(index, this._input.length);
+        if (this._passwordMode) {
+          pre = this._passwordMask.repeat(pre.length);
+          post = this._passwordMask.repeat(post.length);
+        }
+        this.toggleCursor(true);
+      } else if (this._autoHideCursor) {
+        this.toggleCursor(false);
+      }
+      this.patch({
+        PreLabel: {
+          text: {
+            text: pre
+          }
+        },
+        PostLabel: {
+          text: {
+            text: post
+          }
+        }
+      });
+      if (this.h === 0) {
+        this.tag('PreLabel').loadTexture();
+        this.h = this.tag('PreLabel').renderHeight;
+      }
+      this._cursorIndex = index;
+    }
+    _handleRight() {
+      this._update(Math.min(this._input.length, this._cursorIndex + 1));
+    }
+    _handleLeft() {
+      this._update(Math.max(0, this._cursorIndex - 1));
+    }
+    _firstActive() {
+      this._labelTxLoaded();
+      this._update();
+    }
+    get input() {
+      return this._input;
+    }
+    get hasInput() {
+      return this._input.length > 0;
+    }
+    get cursorIndex() {
+      return this._cursorIndex;
+    }
+    set inputText(obj) {
+      this._inputText = obj;
+      this.tag('PreLabel').patch({
+        text: obj
+      });
+      this.tag('PostLabel').patch({
+        text: obj
+      });
+    }
+    get inputText() {
+      return this._inputText;
+    }
+    set description(str) {
+      this._description = str;
+    }
+    get description() {
+      return this._description;
+    }
+    set cursor(obj) {
+      if (obj.x) {
+        this._cursorX = obj.x;
+        delete obj.x;
+      }
+      this.tag('Cursor').patch(obj);
+    }
+    get cursor() {
+      return this.tag('Cursor');
+    }
+    get cursorVisible() {
+      return this._cursorVisible;
+    }
+    set autoHideCursor(bool) {
+      this._autoHideCursor = bool;
+    }
+    get autoHideCursor() {
+      return this._autoHideCursor;
+    }
+    set passwordMode(val) {
+      this._passwordMode = val;
+    }
+    get passwordMode() {
+      return this._passwordMode;
+    }
+    set passwordMask(str) {
+      this._passwordMask = str;
+    }
+    get passwordmask() {
+      return this._passwordMask;
+    }
+
+    // the width at which the text start scrolling
+    set maxLabelWidth(val) {
+      this._maxLabelWidth = val;
+    }
+    get maxLabelWidth() {
+      return this._maxLabelWidth;
+    }
+    set labelPositionStatic(val) {
+      this._labelPositionStatic = val;
+    }
+    get labelPositionStatic() {
+      return this._labelPositionStatic;
+    }
+    get _labelOffset() {
+      if (this._labelPositionStatic) return 0;
+      let offset = this.maxLabelWidth - this.tag('Cursor').x;
+      return offset < 0 ? offset : 0;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class Key extends Lightning.Component {
+    static _template() {
+      return {
+        Background: {
+          w: w => w,
+          h: h => h,
+          rect: true
+        },
+        Label: {
+          mount: 0.5,
+          x: w => w / 2,
+          y: h => h / 2
+        }
+      };
+    }
+    _construct() {
+      this._backgroundColors = {};
+      this._labelColors = {};
+    }
+    set data(obj) {
+      this._data = obj;
+      this._update();
+    }
+    get data() {
+      return this._data;
+    }
+    set labelText(obj) {
+      this._labelText = obj;
+      this.tag('Label').patch({
+        text: obj
+      });
+    }
+    get labelText() {
+      return this._labelText;
+    }
+    set label(obj) {
+      this.tag('Label').patch(obj);
+    }
+    get label() {
+      return this.tag('Label');
+    }
+    set labelColors(obj) {
+      this._labelColors = obj;
+      this._update();
+    }
+    get labelColors() {
+      return this._labelColors;
+    }
+    set backgroundColors(obj) {
+      this._backgroundColors = obj;
+      this._update();
+    }
+    get backgroundColors() {
+      return this._backgroundColors;
+    }
+    set background(obj) {
+      this.tag('Background').patch(obj);
+    }
+    get background() {
+      return this.tag('Background');
+    }
+    _update() {
+      if (!this.active) {
+        return;
+      }
+      const {
+        label = ''
+      } = this._data;
+      const hasFocus = this.hasFocus();
+      let {
+        focused,
+        unfocused = 0xff000000
+      } = this._backgroundColors;
+      let {
+        focused: labelFocused,
+        unfocused: labelUnfocused = 0xffffffff
+      } = this._labelColors;
+      this.patch({
+        Background: {
+          color: hasFocus && focused ? focused : unfocused
+        },
+        Label: {
+          text: {
+            text: label
+          },
+          color: hasFocus && labelFocused ? labelFocused : labelUnfocused
+        }
+      });
+    }
+    _firstActive() {
+      this._update();
+    }
+    _focus() {
+      let {
+        focused,
+        unfocused = 0xff000000
+      } = this._backgroundColors;
+      let {
+        focused: labelFocused,
+        unfocused: labelUnfocused = 0xffffffff
+      } = this._labelColors;
+      this.patch({
+        Background: {
+          smooth: {
+            color: focused || unfocused
+          }
+        },
+        Label: {
+          smooth: {
+            color: labelFocused || labelUnfocused
+          }
+        }
+      });
+    }
+    _unfocus() {
+      let {
+        unfocused = 0xff000000
+      } = this._backgroundColors;
+      let {
+        unfocused: labelUnfocused = 0xffffffff
+      } = this._labelColors;
+      this.patch({
+        Background: {
+          smooth: {
+            color: unfocused
+          }
+        },
+        Label: {
+          smooth: {
+            color: labelUnfocused
+          }
+        }
+      });
+    }
+    static get width() {
+      return 80;
+    }
+    static get height() {
+      return 80;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class Keyboard extends Lightning.Component {
+    static _template() {
+      return {
+        Keys: {
+          w: w => w
+        }
+      };
+    }
+    _construct() {
+      this._input = '';
+      this._inputField = undefined;
+      this._maxCharacters = 56;
+      this.navigationWrapAround = false;
+      this._snapToRow = false;
+      this.resetFocus();
+    }
+    resetFocus() {
+      this._columnIndex = 0;
+      this._rowIndex = 0;
+      this._previousKey = null;
+    }
+    _setup() {
+      this._keys = this.tag('Keys');
+      this._update();
+    }
+    _update() {
+      const {
+        layouts,
+        buttonTypes = {},
+        styling = {}
+      } = this._config;
+      if (!this._layout || this._layout && layouts[this._layout] === undefined) {
+        console.error("Configured layout \"".concat(this._layout, "\" does not exist. Picking first available: \"").concat(Object.keys(layouts)[0], "\""));
+        this._layout = Object.keys(layouts)[0];
+      }
+      const {
+        horizontalSpacing = 0,
+        verticalSpacing = 0,
+        align = 'left'
+      } = styling;
+      let rowPosition = 0;
+      const isEvent = /^[A-Z][A-Za-z0-9]{1}/;
+      const hasLabel = /\:/;
+      if (buttonTypes.default === undefined) {
+        buttonTypes.default = Key;
+      }
+      this._keys.children = layouts[this._layout].map((row, rowIndex) => {
+        const {
+          x = 0,
+          margin = 0,
+          marginRight,
+          marginLeft,
+          marginTop,
+          marginBottom,
+          spacing: rowHorizontalSpacing = horizontalSpacing || 0,
+          align: rowAlign = align
+        } = styling["Row".concat(rowIndex + 1)] || {};
+        let keyPosition = 0;
+        let rowHeight = 0;
+        const rowKeys = row.map((key, keyIndex) => {
+          const origin = key;
+          let keyType = buttonTypes.default;
+          let action = 'Input';
+          let label = key;
+          if (isEvent.test(key)) {
+            if (hasLabel.test(key)) {
+              key = key.split(':');
+              label = key[1].toString();
+              key = key[0];
+            }
+            if (buttonTypes[key]) {
+              keyType = buttonTypes[key];
+              action = key.action || key;
+            }
+          }
+          let keySpacing = keyType && keyType.margin || 0;
+          let w = 0;
+          let h = 0;
+          let marginLeft = 0;
+          let marginRight = rowHorizontalSpacing;
+          if (keyType.type) {
+            keySpacing = keyType.type.margin || keySpacing;
+            w = keyType.type.width || w;
+            h = keyType.type.height || h;
+            marginLeft = keyType.type.marginLeft || marginLeft;
+            marginRight = keyType.type.marginRight || marginRight;
+          }
+          w = keyType.w || w;
+          h = keyType.h || h;
+          rowHeight = h > rowHeight ? h : rowHeight;
+          const currentPosition = keyPosition + marginLeft;
+          keyPosition += marginLeft + w + marginRight;
+          return {
+            ref: "Key-{".concat(keyIndex + 1, "}"),
+            type: KeyWrapper,
+            keyboard: this,
+            x: currentPosition,
+            w,
+            h,
+            key: {
+              data: {
+                origin,
+                key,
+                label,
+                action
+              },
+              w,
+              h,
+              ...keyType
+            }
+          };
+        });
+        let rowOffset = x + (marginLeft || margin);
+        let rowMount = 0;
+        if (this.w && rowAlign === 'center') {
+          rowOffset = this.w / 2;
+          rowMount = 0.5;
+        }
+        if (this.w && rowAlign === 'right') {
+          rowOffset = this.w - (marginRight || margin);
+          rowMount = 1;
+        }
+        const currentPosition = rowPosition + (marginTop || margin);
+        rowPosition = currentPosition + rowHeight + (marginBottom || margin || verticalSpacing);
+        return {
+          ref: "Row-".concat(rowIndex + 1),
+          x: rowOffset,
+          mountX: rowMount,
+          w: keyPosition,
+          y: currentPosition,
+          children: rowKeys
+        };
+      });
+      this._refocus();
+    }
+    _getFocused() {
+      return this.currentKeyWrapper || this;
+    }
+    _handleRight() {
+      return this.navigate('row', 1);
+    }
+    _handleLeft() {
+      return this.navigate('row', -1);
+    }
+    _handleUp() {
+      return this.navigate('column', -1);
+    }
+    _handleDown() {
+      return this.navigate('column', 1);
+    }
+    _handleKey(_ref) {
+      let {
+        key,
+        code = 'CustomKey'
+      } = _ref;
+      if (code === 'Backspace' && this._input.length === 0) {
+        return false;
+      }
+      if (key === ' ') {
+        key = 'Space';
+      }
+      const targetFound = this._findKey(key);
+      if (targetFound) {
+        this._handleEnter();
+      }
+      return targetFound;
+    }
+    _findKey(str) {
+      const rows = this._config.layouts[this._layout];
+      let i = 0,
+        j = 0;
+      for (; i < rows.length; i++) {
+        for (j = 0; j < rows[i].length; j++) {
+          let key = rows[i][j];
+          if (str.length > 1 && key.indexOf(str) > -1 || key.toUpperCase() === str.toUpperCase()) {
+            this._rowIndex = i;
+            this._columnIndex = j;
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+    _handleEnter() {
+      const {
+        origin,
+        action
+      } = this.currentKey.data;
+      const event = {
+        index: this._input.length,
+        key: origin
+      };
+      if (this._inputField && this._inputField.cursorIndex) {
+        event.index = this._inputField.cursorIndex;
+      }
+      if (action !== 'Input') {
+        const split = event.key.split(':');
+        const call = "on".concat(split[0]);
+        const eventFunction = this[call];
+        event.key = split[1];
+        if (eventFunction && eventFunction.apply && eventFunction.call) {
+          eventFunction.call(this, event);
+        }
+        this.signal(call, {
+          input: this._input,
+          keyboard: this,
+          ...event
+        });
+      } else {
+        this.addAt(event.key, event.index);
+      }
+    }
+    _changeInput(input) {
+      if (input.length > this._maxCharacters) {
+        return;
+      }
+      const eventData = {
+        previousInput: this._input,
+        input: this._input = input
+      };
+      if (this._inputField && this._inputField.onInputChanged) {
+        this._inputField.onInputChanged(eventData);
+      }
+      this.signal('onInputChanged', eventData);
+    }
+    focus(str) {
+      this._findKey(str);
+    }
+    add(str) {
+      this._changeInput(this._input + str);
+    }
+    addAt(str, index) {
+      if (index > this._input.length - 1) {
+        this.add(str);
+      } else if (index > -1) {
+        this._changeInput(this._input.substring(0, index) + str + this._input.substring(index, this._input.length));
+      }
+    }
+    remove() {
+      this._changeInput(this._input.substring(0, this._input.length - 1));
+    }
+    removeAt(index) {
+      if (index > this._input.length - 1) {
+        this.remove();
+      } else if (index > -1) {
+        this._changeInput(this._input.substring(0, index - 1) + this._input.substring(index, this._input.length));
+      }
+    }
+    clear() {
+      this._changeInput('');
+    }
+    layout(key) {
+      if (key === this._layout) {
+        return;
+      }
+      this._layout = key;
+      if (this.attached) {
+        this.resetFocus();
+        this._update();
+      }
+    }
+    inputField(component) {
+      if (component && component.isComponent) {
+        this._rowIndex = 0;
+        this._columnIndex = 0;
+        this._input = component.input !== undefined ? component.input : '';
+        this._inputField = component;
+      } else {
+        this._rowIndex = 0;
+        this._columnIndex = 0;
+        this._input = '';
+        this._inputField = undefined;
+      }
+    }
+    _findKeyInRow(currentKey, currentRow, targetRow) {
+      const currentX = currentRow.x - currentRow.w * currentRow.mountX + currentKey.x;
+      const m = targetRow.children.map(key => {
+        const keyX = targetRow.x - targetRow.w * targetRow.mountX + key.x;
+        if (keyX <= currentX && (this._snapToRow || currentX < keyX + key.w)) {
+          return keyX + key.w - currentX;
+        }
+        if (keyX >= currentX && (this._snapToRow || keyX < currentX + currentKey.w)) {
+          return currentX + currentKey.w - keyX;
+        }
+        return -1;
+      });
+      if (!this._snapToRow) {
+        let acc = -1;
+        let t = -1;
+        for (let i = 0; i < m.length; i++) {
+          if (m[i] === -1 && acc > -1) {
+            break;
+          }
+          if (m[i] > acc) {
+            acc = m[i];
+            t = i;
+          }
+        }
+        return t;
+      }
+      let t = m.indexOf(currentKey.w);
+      if (t === -1 && m.length > 0) {
+        let acc = this.w;
+        for (let i = 0; i < m.length; i++) {
+          if (m[i] >= 0) {
+            const cutoff = currentX + currentKey.w - currentX - m[i];
+            if (cutoff < acc) {
+              acc = cutoff;
+              t = i;
+            }
+          }
+        }
+        if (t === -1) {
+          acc = this.w;
+          for (let i = 0; i < m.length; i++) {
+            if (Math.abs(m[i]) < acc) {
+              acc = Math.abs(m[i]);
+              t = i;
+            }
+          }
+        }
+      }
+      return t;
+    }
+    navigate(direction, shift) {
+      const targetIndex = (direction === 'row' ? this._columnIndex : this._rowIndex) + shift;
+      const currentRow = this.rows[this._rowIndex];
+      if (direction === 'row' && targetIndex > -1 && targetIndex < currentRow.children.length) {
+        this._previous = null;
+        return this._columnIndex = targetIndex;
+      } else if (direction === 'row' && this.navigationWrapAround) {
+        this._previous = null;
+        let rowLen = currentRow.children.length;
+        return this._columnIndex = (targetIndex % rowLen + rowLen) % rowLen;
+      }
+      if (direction === 'column' && targetIndex > -1 && targetIndex < this.rows.length) {
+        const currentRowIndex = this._rowIndex;
+        const currentColumnIndex = this._columnIndex;
+        if (this._previous && this._previous.row === targetIndex) {
+          const tmp = this._previous.column;
+          this._previous.column = this._columnIndex;
+          this._columnIndex = tmp;
+          this._rowIndex = this._previous.row;
+        } else {
+          const targetRow = this.rows[targetIndex];
+          const currentKey = this.currentKeyWrapper;
+          const currentRow = this.rows[this._rowIndex];
+          let t = this._findKeyInRow(currentKey, currentRow, targetRow);
+          if (t > -1) {
+            this._rowIndex = targetIndex;
+            this._columnIndex = t;
+          } // if no next row found and wraparound is on, loop back to first row
+          else if (this.navigationWrapAround) {
+            t = this._findKeyInRow(currentKey, currentRow, this.rows[0]);
+            this._columnIndex = t > -1 ? t : Math.min(this.rows[0].children.length - 1, this._columnIndex);
+            return this._rowIndex = 0;
+          }
+        }
+        if (this._rowIndex !== currentRowIndex) {
+          this._previous = {
+            column: currentColumnIndex,
+            row: currentRowIndex
+          };
+          return this._rowIndex = targetIndex;
+        }
+      } else if (direction === 'column' && this.navigationWrapAround) {
+        this._previous = {
+          column: this._columnIndex,
+          row: this._rowIndex
+        };
+        let nrRows = this.rows.length;
+        this._rowIndex = (targetIndex % nrRows + nrRows) % nrRows;
+        this._columnIndex = Math.min(this.rows[this._rowIndex].children.length - 1, this._columnIndex);
+      }
+      return false;
+    }
+    onSpace(_ref2) {
+      let {
+        index
+      } = _ref2;
+      this.addAt(' ', index);
+    }
+    onBackspace(_ref3) {
+      let {
+        index
+      } = _ref3;
+      this.removeAt(index);
+    }
+    onClear() {
+      this.clear();
+    }
+    onLayout(_ref4) {
+      let {
+        key
+      } = _ref4;
+      this.layout(key);
+    }
+    set config(obj) {
+      this._config = obj;
+      if (this.active) {
+        this._update();
+      }
+    }
+    get config() {
+      return this._config;
+    }
+    set currentInputField(component) {
+      this.inputField(component);
+    }
+    get currentInputField() {
+      return this._inputField;
+    }
+    set currentLayout(str) {
+      this.layout(str);
+    }
+    get currentLayout() {
+      return this._layout;
+    }
+    set maxCharacters(num) {
+      this._maxCharacters = num;
+    }
+    get maxCharacters() {
+      return this._maxCharacters;
+    }
+    set snapToRow(bool) {
+      this._snapToRow = bool;
+    }
+    get snapToRow() {
+      return true;
+    }
+    get rows() {
+      return this._keys && this._keys.children;
+    }
+    get currentKeyWrapper() {
+      return this.rows && this.rows[this._rowIndex] && this.rows[this._rowIndex].children[this._columnIndex];
+    }
+    get currentKey() {
+      return this.currentKeyWrapper && this.currentKeyWrapper.key;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class List$3 extends CollectionWrapper {
+    plotItems() {
+      let options = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : {};
+      const {
+        immediate = false
+      } = options;
+      const items = this._items;
+      const wrapper = this.wrapper;
+      const {
+        directionIsRow,
+        main,
+        mainDim,
+        mainMarginTo,
+        mainMarginFrom,
+        cross,
+        crossDim
+      } = this._getPlotProperties(this._direction);
+      let crossPos = 0,
+        crossSize = 0,
+        position = 0;
+      const animateItems = [];
+      const viewboundMain = directionIsRow ? 1920 : 1080;
+      const viewboundCross = directionIsRow ? 1080 : 1920;
+      const renderContext = this.core.renderContext;
+      const newChildren = items.map((item, index) => {
+        const sizes = this._getItemSizes(item);
+        position += sizes[mainMarginFrom] || sizes.margin || 0;
+        if (crossSize < sizes[crossDim]) {
+          crossSize = sizes[crossDim];
+        }
+        const ref = "IW-".concat(item.assignedID);
+        let mainPos = position;
+        crossPos = item[cross] || crossPos;
+        let tmp = mainPos;
+        let tcp = crossPos;
+        const existingItemWrapper = wrapper.tag(ref);
+        if (existingItemWrapper && (existingItemWrapper.active && (crossPos !== existingItemWrapper[cross] || mainPos !== existingItemWrapper[main]) || !existingItemWrapper.active && (renderContext["p".concat(main)] + wrapper[main] + mainPos <= viewboundMain || renderContext["p".concat(cross)] + wrapper[cross] + crossPos <= viewboundCross))) {
+          tmp = existingItemWrapper[main];
+          tcp = existingItemWrapper[cross];
+          animateItems.push(index);
+        }
+        position += sizes[mainDim] + (sizes[mainMarginTo] || sizes.margin || this._spacing);
+        return {
+          ref,
+          type: ItemWrapper$1,
+          componentIndex: index,
+          forceLoad: this._forceLoad,
+          ...sizes,
+          ["assigned".concat(main.toUpperCase())]: mainPos,
+          ["assigned".concat(cross.toUpperCase())]: crossPos,
+          [main]: tmp,
+          [cross]: tcp
+        };
+      });
+      wrapper.children = newChildren;
+      animateItems.forEach(index => {
+        const item = wrapper.children[index];
+        if (immediate) {
+          item.patch({
+            x: item.assignedX,
+            y: item.assignedY
+          });
+        } else {
+          item.patch({
+            smooth: {
+              x: item.assignedX,
+              y: item.assignedY
+            }
+          });
+        }
+      });
+      this._resizeWrapper(crossSize);
+    }
+    repositionItems() {
+      const wrapper = this.wrapper;
+      if (!wrapper && wrapper.children.length) {
+        return true;
+      }
+      const {
+        main,
+        mainDim,
+        mainMarginTo,
+        mainMarginFrom,
+        cross,
+        crossDim
+      } = this._getPlotProperties(this._direction);
+      let crossPos = 0,
+        crossSize = 0,
+        position = 0;
+      wrapper.children.forEach(item => {
+        const sizes = this._getItemSizes(item);
+        position += sizes[mainMarginFrom] || sizes.margin || 0;
+        crossPos = item[cross] || crossPos;
+        if (crossSize < sizes[crossDim]) {
+          crossSize = sizes[crossDim];
+        }
+        const mainPos = position;
+        position += sizes[mainDim] + (sizes[mainMarginTo] || sizes.margin || this.spacing);
+        item.patch({
+          ["assigned".concat(main.toUpperCase())]: mainPos,
+          ["assigned".concat(cross.toUpperCase())]: 0,
+          [main]: mainPos,
+          [cross]: crossPos,
+          ...sizes
+        });
+      });
+      this._resizeWrapper(crossSize);
+      super.repositionItems();
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class ScrollingLabel extends Lightning.Component {
+    static _template() {
+      return {
+        LabelClipper: {
+          w: w => w,
+          rtt: true,
+          shader: {
+            type: Lightning.shaders.FadeOut
+          },
+          LabelWrapper: {
+            Label: {
+              renderOffscreen: true
+            },
+            LabelCopy: {
+              renderOffscreen: true
+            }
+          }
+        }
+      };
+    }
+    _construct() {
+      this._autoStart = true;
+      this._scrollAnimation = false;
+      this._fade = 30;
+      this._spacing = 30;
+      this._label = {};
+      this._align = 'left';
+      this._animationSettings = {
+        delay: 0.7,
+        repeat: -1,
+        stopMethod: 'immediate'
+      };
+    }
+    _init() {
+      const label = this.tag('Label');
+      label.on('txLoaded', () => {
+        this._update(label);
+        this._updateAnimation(label);
+        if (this._autoStart) {
+          this.start();
+        }
+      });
+    }
+    _update() {
+      let label = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.tag('Label');
+      const renderWidth = label.renderWidth;
+      const noScroll = renderWidth <= this.renderWidth;
+      let labelPos = 0;
+      if (noScroll && this._align !== 'left') {
+        labelPos = (this.renderWidth - renderWidth) * ScrollingLabel.ALIGN[this._align];
+      }
+      this.tag('LabelClipper').patch({
+        h: label.renderHeight,
+        shader: {
+          right: noScroll ? 0 : this._fade
+        },
+        LabelWrapper: {
+          x: 0,
+          Label: {
+            x: labelPos
+          },
+          LabelCopy: {
+            x: renderWidth + this._spacing
+          }
+        }
+      });
+    }
+    _updateAnimation() {
+      let label = arguments.length > 0 && arguments[0] !== undefined ? arguments[0] : this.tag('Label');
+      if (this._scrollAnimation) {
+        this._scrollAnimation.stopNow();
+      }
+      if (label.renderWidth > this.renderWidth) {
+        if (!this._animationSettings.duration) {
+          this._animationSettings.duration = label.renderWidth / 50;
+        }
+        this._scrollAnimation = this.animation({
+          ...this._animationSettings,
+          actions: [{
+            t: 'LabelWrapper',
+            p: 'x',
+            v: {
+              sm: 0,
+              0: 0,
+              1.0: -(label.renderWidth + this._spacing)
+            }
+          }, {
+            t: 'LabelClipper',
+            p: 'shader.left',
+            v: {
+              0: 0,
+              0.2: this._fade,
+              0.8: this._fade,
+              1.0: 0
+            }
+          }]
+        });
+      }
+    }
+    start() {
+      if (this._scrollAnimation) {
+        this._scrollAnimation.stopNow();
+        this.tag('LabelCopy').patch({
+          text: this._label
+        });
+        this._scrollAnimation.start();
+      }
+    }
+    stop() {
+      if (this._scrollAnimation) {
+        this._scrollAnimation.stopNow();
+        this.tag('LabelCopy').text = '';
+      }
+    }
+    set label(obj) {
+      if (typeof obj === 'string') {
+        obj = {
+          text: obj
+        };
+      }
+      this._label = {
+        ...this._label,
+        ...obj
+      };
+      this.tag('Label').patch({
+        text: obj
+      });
+    }
+    get label() {
+      return this.tag('Label');
+    }
+    set align(pos) {
+      this._align = pos;
+    }
+    get align() {
+      return this._align;
+    }
+    set autoStart(bool) {
+      this._autoStart = bool;
+    }
+    get autoStart() {
+      return this._autoStart;
+    }
+    set repeat(num) {
+      this.animationSettings = {
+        repeat: num
+      };
+    }
+    get repeat() {
+      return this._animationSettings.repeat;
+    }
+    set delay(num) {
+      this.animationSettings = {
+        delay: num
+      };
+    }
+    get delay() {
+      return this._animationSettings.delay;
+    }
+    set duration(num) {
+      this.animationSettings = {
+        duration: num
+      };
+    }
+    get duration() {
+      return this._animationSettings.duration;
+    }
+    set animationSettings(obj) {
+      this._animationSettings = {
+        ...this._animationSettings,
+        ...obj
+      };
+      if (this._scrollAnimation) {
+        this._updateAnimation();
+      }
+    }
+    get animationSettings() {
+      return this._animationSettings;
+    }
+  }
+  ScrollingLabel.ALIGN = {
+    left: 0,
+    center: 0.5,
+    right: 1
+  };
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  const calcCarouselNavigation = (dir, current, min, max) => {
+    let target = current + dir;
+    if (target < min) {
+      target = max;
+    }
+    if (target > max) {
+      target = min;
+    }
+    return target;
+  };
+  class Stepper extends Lightning.Component {
+    static _template() {
+      return {
+        h: 80,
+        w: 574,
+        Focus: {
+          alpha: 0,
+          w: w => w,
+          h: h => h,
+          rect: true
+        },
+        Label: {
+          x: 30,
+          y: h => h * 0.5,
+          mountY: 0.5,
+          text: {
+            text: '',
+            fontSize: 22
+          }
+        },
+        ValueWrapper: {
+          x: w => w - 30,
+          w: 200,
+          h: h => h,
+          mountX: 1,
+          Value: {
+            x: w => w * 0.5,
+            y: h => h * 0.5,
+            mountX: 0.5,
+            mountY: 0.5,
+            text: {
+              text: '',
+              fontSize: 22
+            }
+          }
+        }
+      };
+    }
+    _construct() {
+      this._focusColor = 0xff009245;
+      this._labelColor = 0xff9d9d9d;
+      this._labelColorFocused = 0xffffffff;
+      this._padding = 30;
+      this._max = 100;
+      this._min = 0;
+      this._value = 50;
+      this._options = undefined;
+      this._label = 'label';
+      this._focusAnimation = null;
+      defineProperties(this, ['focusColor', 'labelColor', 'labelColorFocused', 'padding', 'max', 'min', 'focusAnimation']);
+    }
+    _update() {
+      this.patch({
+        Focus: {
+          color: this._focusColor
+        },
+        Label: {
+          x: this._padding,
+          color: this._labelColor,
+          text: {
+            text: this._label
+          }
+        },
+        ValueWrapper: {
+          x: w => w - this._padding,
+          Value: {
+            color: this._labelColor,
+            text: {
+              text: this.optionValue || this.value
+            }
+          }
+        }
+      });
+      if (this.hasFocus()) {
+        this._focus();
+      }
+    }
+    _createFocusAnimation() {
+      this._focusAnimation = this.animation({
+        duration: 0.2,
+        stopMethod: 'reverse',
+        actions: [{
+          t: 'Focus',
+          p: 'alpha',
+          v: {
+            0: 0,
+            1: 1
+          }
+        }, {
+          t: 'Label',
+          p: 'color',
+          v: {
+            0: this._labelColor,
+            1: this._labelColorFocused
+          }
+        }, {
+          t: 'ValueWrapper.Value',
+          p: 'color',
+          v: {
+            0: this._labelColor,
+            1: this._labelColorFocused
+          }
+        }]
+      });
+    }
+    _firstActive() {
+      if (!this._focusAnimation) {
+        this._createFocusAnimation();
+      }
+      this._update();
+    }
+    _navigate(dir) {
+      this.value = calcCarouselNavigation(dir, this._value, this._min, this._max);
+      const event = {
+        value: this._value
+      };
+      if (this._options) {
+        event.options = this._options;
+      }
+      this.fireAncestors('$onValueChanged', event);
+      this.signal('onValueChanged', event);
+    }
+    _handleLeft() {
+      this._navigate(-1);
+    }
+    _handleRight() {
+      this._navigate(1);
+    }
+    _focus() {
+      if (this._focusAnimation) {
+        this._focusAnimation.start();
+      }
+    }
+    _unfocus() {
+      if (this._focusAnimation) {
+        this._focusAnimation.stop();
+      }
+    }
+    set label(str) {
+      this._label = str;
+      if (this.active) {
+        this.tag('Label').text.text = str;
+      }
+    }
+    get label() {
+      return this._label;
+    }
+    set value(str) {
+      this._value = str;
+      if (this.active) {
+        this.tag('Value').text.text = this.optionValue || this._value;
+      }
+    }
+    get value() {
+      return this._value;
+    }
+    get optionValue() {
+      return this._options && this._options[this._value] && this._options[this._value].label || undefined;
+    }
+    set options(arr) {
+      const refactor = arr.map(option => {
+        if (typeof option === 'string') {
+          return {
+            label: option
+          };
+        }
+        return option;
+      });
+      this._value = 0;
+      this._options = refactor;
+      this._max = refactor.length - 1;
+      this._update();
+    }
+    get options() {
+      return this._options;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class ArrowStepper extends Stepper {
+    static _template() {
+      return {
+        ...super._template(),
+        ValueWrapper: {
+          x: w => w - 30,
+          w: 200,
+          h: h => h,
+          mountX: 1,
+          ArrowLeft: {
+            y: h => h * 0.5,
+            mountY: 0.5
+          },
+          Value: {
+            x: w => w * 0.5,
+            y: h => h * 0.5,
+            mountX: 0.5,
+            mountY: 0.5,
+            text: {
+              text: '',
+              fontSize: 22
+            }
+          },
+          ArrowRight: {
+            y: h => h * 0.5,
+            x: w => w,
+            mountY: 0.5,
+            mountX: 1
+          }
+        }
+      };
+    }
+    _update() {
+      this.patch({
+        Focus: {
+          color: this._focusColor
+        },
+        Label: {
+          x: this._padding,
+          color: this._labelColor,
+          text: {
+            text: this._label
+          }
+        },
+        ValueWrapper: {
+          x: w => w - this._padding,
+          ArrowLeft: {
+            color: this._labelColor
+          },
+          Value: {
+            color: this._labelColor,
+            text: {
+              text: this.optionValue || this.value
+            }
+          },
+          ArrowRight: {
+            color: this._labelColor
+          }
+        }
+      });
+      if (this.hasFocus()) {
+        this._focus();
+      }
+    }
+    _createFocusAnimation() {
+      this._focusAnimation = this.animation({
+        duration: 0.2,
+        stopMethod: 'reverse',
+        actions: [{
+          t: 'Focus',
+          p: 'alpha',
+          v: {
+            0: 0,
+            1: 1
+          }
+        }, {
+          t: 'ValueWrapper.ArrowLeft',
+          p: 'color',
+          v: {
+            0: this._labelColor,
+            1: this._labelColorFocused
+          }
+        }, {
+          t: 'ValueWrapper.Value',
+          p: 'color',
+          v: {
+            0: this._labelColor,
+            1: this._labelColorFocused
+          }
+        }, {
+          t: 'ValueWrapper.ArrowRight',
+          p: 'color',
+          v: {
+            0: this._labelColor,
+            1: this._labelColorFocused
+          }
+        }]
+      });
+    }
+    _firstActive() {
+      if (!this._focusAnimation) {
+        this._createFocusAnimation();
+      }
+      const arrowLeft = this.tag('ArrowLeft');
+      const arrowRight = this.tag('ArrowRight');
+      if (!(arrowLeft.src !== undefined && arrowLeft.text !== null)) {
+        arrowLeft.text = {
+          text: '\u25c0',
+          fontSize: 18
+        };
+      }
+      if (!(arrowRight.src !== undefined && arrowRight.text !== null)) {
+        arrowRight.text = {
+          text: '\u25b6',
+          fontSize: 18
+        };
+      }
+      this._update();
+    }
+  }
+
+  class ColorShift extends Lightning.Component {
+    static _template() {
+      return {
+        w: 574,
+        h: 240,
+        List: {
+          type: List$3,
+          w: w => w,
+          h: h => h,
+          forceLoad: true,
+          spacing: 0,
+          direction: 'column'
+        }
+      };
+    }
+    _construct() {
+      this._autoColorShift = true;
+      this._focusColor = 0xff009245;
+      this._labelColor = 0xff9d9d9d;
+      this._labelColorFocused = 0xffffffff;
+      this._options = [{
+        type: 'neutral',
+        label: 'normal'
+      }, {
+        type: 'protanopia',
+        label: 'Protanopia'
+      }, {
+        type: 'deuteranopia',
+        label: 'Deuteranopia'
+      }, {
+        type: 'tritanopia',
+        label: 'Tritanopia'
+      }, {
+        type: 'monochromacy',
+        label: 'Achromatopsia'
+      }];
+      defineProperties(this, ['focusColor', 'labelColor', 'labelColorFocused', 'options', 'autoColorShift']);
+    }
+    _getFocused() {
+      return this.tag('List');
+    }
+    _shiftColors() {
+      if (this._autoColorShift && this.application && this.application.colorshift) {
+        this.application.colorshift(this._settings.correction, this._settings);
+      }
+    }
+    $onValueChanged() {
+      const listItems = this.tag('List').items;
+      const correction = listItems[0];
+      this._settings = {
+        correction: correction.options[correction.value].type,
+        brightness: listItems[1].value,
+        contrast: listItems[2].value,
+        gamma: listItems[3].value
+      };
+      if (this._currentCorrection && this._settings.correction !== this._currentCorrection) {
+        const steppers = listItems.slice(1);
+        steppers.forEach(stepper => {
+          stepper.value = 50;
+        });
+      }
+      this._currentCorrection = this._settings.correction;
+      this._shiftColors();
+      this.signal('onColorShift', this._settings);
+    }
+    _update() {
+      const list = this.tag('List');
+      const steppers = ['Brightness', 'Contrast', 'Gamma'];
+      const options = this._options;
+      const settings = this._settings;
+      const colors = {
+        focusColor: this._focusColor,
+        labelColor: this._labelColor,
+        labelColorFocused: this._labelColorFocused
+      };
+      this._shiftColors();
+      const settingItems = steppers.map(stepper => {
+        const lowerC = stepper.toLocaleLowerCase();
+        return {
+          type: this["".concat(lowerC, "Component")],
+          label: stepper,
+          value: settings[lowerC],
+          w: this.finalW,
+          h: 80,
+          ...colors
+        };
+      });
+      settingItems.unshift({
+        type: this.correctionComponent,
+        options,
+        value: findIndexOfObject(options, settings.correction, 'type'),
+        label: 'Color adjustment',
+        w: this.finalW,
+        h: 80,
+        ...colors
+      });
+      list.clear();
+      list.add(settingItems);
+    }
+    _firstActive() {
+      if (!this._settings) {
+        this._settings = {
+          correction: 'neutral',
+          brightness: 50,
+          contrast: 50,
+          gamma: 50
+        };
+      }
+      this._update();
+    }
+    set settings(obj) {
+      this._settings = obj;
+      if (this.active) {
+        const listItems = this.tag('List').items;
+        listItems[0] = findIndexOfObject(this._options, obj.correction, 'type');
+        listItems[1] = obj.brightness || 50;
+        listItems[2] = obj.contrast || 50;
+        listItems[3] = obj.gamma || 50;
+      }
+    }
+    get settings() {
+      return this._settings;
+    }
+    get correctionTag() {
+      return this.tag('List').items[0];
+    }
+    get brightnessTag() {
+      return this.tag('List').items[1];
+    }
+    get contrastTag() {
+      return this.tag('List').items[2];
+    }
+    get gammaTag() {
+      return this.tag('List').items[3];
+    }
+    get adjustmentTags() {
+      return this.tag('List').items;
+    }
+    set stepperComponent(component) {
+      this._stepperComponent = component;
+    }
+    get stepperComponent() {
+      return this._stepperComponent || ArrowStepper;
+    }
+    set correctionComponent(component) {
+      this._correctionComponent = component;
+    }
+    get correctionComponent() {
+      return this._correctionComponent || this.stepperComponent;
+    }
+    set brightnessComponent(component) {
+      this._brightnessComponent = component;
+    }
+    get brightnessComponent() {
+      return this._brightnessComponent || this.stepperComponent;
+    }
+    set contrastComponent(component) {
+      this._contrastComponent = component;
+    }
+    get contrastComponent() {
+      return this._contrastComponent || this.stepperComponent;
+    }
+    set gammaComponent(component) {
+      this._gammaComponent = component;
+    }
+    get gammaComponent() {
+      return this._gammaComponent || this.stepperComponent;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class CarouselItem extends Lightning.Component {
+    static _template() {
+      return {
+        Focus: {
+          alpha: 0,
+          x: w => w * 0.5,
+          y: h => h * 0.5,
+          mount: 0.5,
+          w: 120,
+          h: 50,
+          rect: true,
+          shader: {
+            type: Lightning.shaders.RoundedRectangle,
+            radius: 25
+          }
+        },
+        Label: {
+          x: w => w * 0.5,
+          y: h => h * 0.5,
+          mount: 0.5,
+          renderOffscreen: true,
+          text: {
+            text: '',
+            fontSize: 22
+          }
+        }
+      };
+    }
+    _construct() {
+      this._focusColor = 0xff009245;
+      this._labelColor = 0xff9d9d9d;
+      this._labelColorFocused = 0xffffffff;
+      this._padding = 40;
+      defineProperties(this, ['focusColor', 'labelColor', 'labelColorFocused', 'padding']);
+    }
+    set label(str) {
+      this.tag('Label').text.text = str;
+      this._label = str;
+    }
+    get label() {
+      return this._label;
+    }
+    _init() {
+      const label = this.tag('Label');
+      label.on('txLoaded', () => {
+        this.patch({
+          w: label.renderWidth,
+          Focus: {
+            w: label.renderWidth + this._padding * 2
+          }
+        });
+        if (this.collectionWrapper) {
+          this.collectionWrapper.reposition();
+        }
+      });
+    }
+    _focus() {
+      this.patch({
+        Focus: {
+          smooth: {
+            alpha: 1
+          }
+        },
+        Label: {
+          smooth: {
+            color: this._labelColorFocused
+          }
+        }
+      });
+    }
+    _unfocus(target) {
+      if (target.isCarouselItem === true) {
+        this.patch({
+          Focus: {
+            smooth: {
+              alpha: 0
+            }
+          },
+          Label: {
+            smooth: {
+              color: this._labelColor
+            }
+          }
+        });
+      }
+    }
+    _firstActive() {
+      this.patch({
+        Focus: {
+          color: this._focusColor
+        },
+        Label: {
+          color: this._labelColor
+        }
+      });
+      if (this.cparent.componentIndex === this.collectionWrapper.currentItemWrapper.componentIndex) {
+        this._focus();
+      }
+    }
+    get isCarouselItem() {
+      return true;
+    }
+    static get width() {
+      return 120;
+    }
+    static get height() {
+      return 50;
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
+  class ProgressBar$1 extends Lightning.Component {
+    static _template() {
+      return {
+        w: 300,
+        h: 10,
+        Background: {
+          w: w => w,
+          h: h => h,
+          rect: true,
+          rtt: true,
+          shader: {
+            type: Lightning.shaders.RoundedRectangle,
+            radius: 5
+          },
+          Progress: {
+            h: h => h,
+            w: 10,
+            rect: true,
+            shader: {
+              type: Lightning.shaders.RoundedRectangle,
+              radius: 0
+            }
+          }
+        }
+      };
+    }
+    _construct() {
+      this._progressColor = 0xff009245;
+      this._progressColorFocused = undefined;
+      this._backgroundColor = 0xff9d9d9d;
+      this._backgroundColorFocused = undefined;
+      this._backgroundRadius = 5;
+      this._progressRadius = 0;
+      this.value = 0.5;
+      defineProperties(this, ['progressColor', 'backgroundColor', 'progressColorFocused', 'backgroundColorFocused']);
+    }
+    progress(p) {
+      if (p > 1) {
+        p = p / 100;
+      }
+      this._value = p;
+      this.tag('Progress').w = this.w * p;
+    }
+    _createFocusAnimation() {
+      this._focusAnimation = this.animation({
+        duration: 0.2,
+        stopMethod: 'reverse',
+        actions: [{
+          t: 'Background',
+          p: 'color',
+          v: {
+            0: this._backgroundColor,
+            1: this._backgroundColorFocused || this._backgroundColor
+          }
+        }, {
+          t: 'Background.Progress',
+          p: 'color',
+          v: {
+            0: this._progressColor,
+            1: this._progressColorFocused || this._progressColor
+          }
+        }]
+      });
+    }
+    _firstActive() {
+      if (!this._focusAnimation) {
+        this._createFocusAnimation();
+      }
+      this.patch({
+        Background: {
+          color: this._backgroundColor,
+          shader: {
+            radius: this._backgroundRadius
+          },
+          Progress: {
+            color: this._progressColor,
+            shader: {
+              radius: this._progressRadius
+            }
+          }
+        }
+      });
+      this.progress(this._value);
+      if (this.hasFocus()) {
+        this._focus();
+      }
+    }
+    _focus() {
+      if (this._focusAnimation) {
+        this._focusAnimation.start();
+      }
+    }
+    _unfocus() {
+      if (this._focusAnimation) {
+        this._focusAnimation.stop();
+      }
+    }
+    set value(p) {
+      this._value = p;
+      if (this.active) {
+        this.progress(p);
+      }
+    }
+    get value() {
+      return this._value;
+    }
+    set backgroundRadius(num) {
+      this._backgroundRadius = num;
+      if (this.active) {
+        this.tag('Background').shader.radius = num;
+      }
+    }
+    get progressRadius() {
+      return this._progressRadius;
+    }
+    set progressRadius(num) {
+      this._progressRadius = num;
+      if (this.active) {
+        this.tag('Progress').shader.radius = num;
+      }
+    }
+    get progressRadius() {
+      return this._progressRadius;
+    }
+    get backgroundTag() {
+      return this.tag('Background');
+    }
+    get progressTag() {
+      return this.tag('Progress');
+    }
+  }
+
+  /*
+   * If not stated otherwise in this file or this component's LICENSE file the
+   * following copyright and licenses apply:
+   *
+   * Copyright 2021 Metrological
+   *
+   * Licensed under the Apache License, Version 2.0 (the License);
+   * you may not use this file except in compliance with the License.
+   * You may obtain a copy of the License at
+   *
+   * http://www.apache.org/licenses/LICENSE-2.0
+   *
+   * Unless required by applicable law or agreed to in writing, software
+   * distributed under the License is distributed on an "AS IS" BASIS,
+   * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   * See the License for the specific language governing permissions and
+   * limitations under the License.
+   */
   class ImageCell extends Lightning.Component {
     static _template() {
       return {
@@ -6739,7 +9595,7 @@ var APP_MyMovieApp = (function (ui) {
               x: 150,
               y: 1300,
               w: 1740,
-              type: ui.List,
+              type: List$3,
               direction: "row"
             }
           },
@@ -6747,7 +9603,7 @@ var APP_MyMovieApp = (function (ui) {
             x: 0,
             y: 0,
             w: 1900,
-            type: ui.List,
+            type: List$3,
             direction: "row"
           }
         },
@@ -6770,7 +9626,7 @@ var APP_MyMovieApp = (function (ui) {
           x: 20,
           y: 80,
           visible: true,
-          type: ui.List,
+          type: List$3,
           spacing: 30,
           direction: "column"
         }
@@ -7534,7 +10390,7 @@ var APP_MyMovieApp = (function (ui) {
                 y: 300,
                 zIndex: 3,
                 visible: true,
-                type: ui.List,
+                type: List$3,
                 direction: "row"
               }
             },
@@ -8077,7 +10933,7 @@ var APP_MyMovieApp = (function (ui) {
                 x: 0,
                 y: 100,
                 w: 1740,
-                type: ui.List,
+                type: List$3,
                 direction: "row"
               }
             },
@@ -8100,7 +10956,7 @@ var APP_MyMovieApp = (function (ui) {
                 x: 0,
                 y: 100,
                 w: 1740,
-                type: ui.List,
+                type: List$3,
                 direction: "row"
               }
             }
@@ -8924,7 +11780,7 @@ var APP_MyMovieApp = (function (ui) {
             x: 100,
             y: 700,
             w: 1740,
-            type: ui.List,
+            type: List$3,
             direction: "row"
           }
         },
@@ -8940,7 +11796,7 @@ var APP_MyMovieApp = (function (ui) {
           x: 20,
           y: 80,
           visible: true,
-          type: ui.List,
+          type: List$3,
           spacing: 30,
           direction: "column"
         }
@@ -9232,7 +12088,7 @@ var APP_MyMovieApp = (function (ui) {
           x: 20,
           y: 80,
           visible: true,
-          type: ui.List,
+          type: List$3,
           spacing: 30,
           direction: "column"
         }
@@ -9526,7 +12382,7 @@ var APP_MyMovieApp = (function (ui) {
           x: 20,
           y: 80,
           visible: true,
-          type: ui.List,
+          type: List$3,
           spacing: 30,
           direction: "column"
         }
@@ -14746,7 +17602,7 @@ var APP_MyMovieApp = (function (ui) {
           x: 20,
           y: 80,
           visible: true,
-          type: ui.List,
+          type: List$3,
           spacing: 30,
           direction: "column"
         }
@@ -16195,5 +19051,5 @@ var APP_MyMovieApp = (function (ui) {
 
   return index;
 
-})(ui);
+})();
 //# sourceMappingURL=appBundle.js.map
