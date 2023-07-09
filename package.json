@@ -1,7 +1,17 @@
 {
-  "name": "MyMovieApp",
+   "homepage":"https//anandpatel0123/MyMovieApp",
+  "name": "mymovieapp",
   "description": "MyMovieApp",
   "dependencies": {
     "@lightningjs/sdk": "^4.6.1"
+  },
+  "scripts":{
+    "predeploy":"lng build",
+    "deploy":"gh-pages -d build",
+    "build":"lng build"
+
+  },
+  "devDependencies": {
+    "gh-pages": "^5.0.0"
   }
 }
