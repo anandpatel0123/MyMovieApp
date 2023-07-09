@@ -1,0 +1,64 @@
+{
+  "series": [
+    {
+      "title": "Breaking Bad",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/ggFHVNu6YYI5L9pCfOacjizRGt.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/84XPpjGvxNyExjSuLQe0SzioErt.jpg",
+      "overview": "A high school chemistry teacher diagnosed with inoperable lung cancer turns to manufacturing and selling methamphetamine in order to secure his family's future."
+    },
+    {
+      "title": "Peaky Blinders",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/bGZn5RVzMMXju4ev7xbl1aLdXqq.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/wiE9doxiLwq3WCGamDIOb2PqBqc.jpg",
+      "overview": "A gangster family epic set in 1900s England, centering on a gang who sew razor blades in the peaks of their caps, and their fierce boss Tommy Shelby."
+    },
+    {
+      "title": "Vikings",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/xxl0YHkYHHCetgnG2fgezUaQiHc.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/oa2gIzDwZ5weyZea5iXPLrQ7leN.jpg",
+      "overview": "Vikings transports us to the brutal and mysterious world of Ragnar Lothbrok, a Viking warrior and farmer who yearns to explore - and raid - the distant shores across the ocean."
+    },
+    {
+      "title": "Prison Break",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/5E1BhkCgjLBlqx557Z5yzcN0i88.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/7w165QdHmJuTHSQwEyJDBDpuDT7.jpg",
+      "overview": "Due to a political conspiracy, an innocent man is sent to death row and his only hope is his brother, who makes it his mission to deliberately get himself sent to the same prison in order to break the both of them out, from the inside."
+    },
+    {
+      "title": "Chernobyl",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/hlLXt2tOPT6RRnjiUmoxyG1LTFi.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/900tHlUYUkp7Ol04XFSoAaEIXcT.jpg",
+      "overview": "https://www.themoviedb.org/t/p/w500/hlLXt2tOPT6RRnjiUmoxyG1LTFi.jpg"
+    },
+    {
+      "title": "Money Heist",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/reEMJA1uzscCbkpeRJeTT2bjqUp.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/j6hw352dBwBEYFzUi00X2p2FoHS.jpg",
+      "overview": "To carry out the biggest heist in history, a mysterious man called The Professor recruits a band of eight robbers who have a single characteristic: none of them has anything to lose. Five months of seclusion - memorizing every step, every detail, every probability - culminate in eleven days locked up in the National Coinage and Stamp Factory of Spain, surrounded by police forces and with dozens of hostages in their power, to find out whether their suicide wager will lead to everything or nothing."
+    },
+    {
+      "title": "Game of Thrones",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/suopoADq0k8YZr4dQXcU6pToj6s.jpg",
+      "overview": "Seven noble families fight for control of the mythical land of Westeros. Friction between the houses leads to full-scale war. All while a very ancient evil awakens in the farthest north. Amidst the war, a neglected military order of misfits, the Night's Watch, is all that stands between the realms of men and icy horrors beyond."
+    },
+    {
+      "title": "Riverdale",
+      "poster_path": "https://www.themoviedb.org/t/p/w500/wRbjVBdDo5qHAEOVYoMWpM58FSA.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/89gS6MtkrNdCnguz9ATjp4fMsu4.jpg",
+      "overview": "Set in the present, the series offers a bold, subversive take on Archie, Betty, Veronica and their friends, exploring the surreality of small-town life, the darkness and weirdness bubbling beneath Riverdale’s wholesome facade."
+    },
+    {
+      "title": "Elite",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/3NTAbAiao4JLzFQw6YxP1YZppM8.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/hobvvYTd45epIEBpTIT1WCIyPMB.jpg",
+      "overview": "When three working class kids enroll in the most exclusive school in Spain, the clash between the wealthy and the poor students leads to tragedy."
+    },
+    {
+      "title": "Chernobyl",
+      "poster_path": "https://www.themoviedb.org/t/p/w220_and_h330_face/aL53oMdZKZRJRH8txH07DLuleF9.jpg",
+      "background": "https://www.themoviedb.org/t/p/original/900tHlUYUkp7Ol04XFSoAaEIXcT.jpg",
+      "overview": "https://www.themoviedb.org/t/p/w500/hlLXt2tOPT6RRnjiUmoxyG1LTFi.jpg"
+    }
+  ]
+}

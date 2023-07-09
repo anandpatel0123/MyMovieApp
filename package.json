@@ -1,0 +1,7 @@
+{
+  "name": "MyMovieApp",
+  "description": "MyMovieApp",
+  "dependencies": {
+    "@lightningjs/sdk": "^4.6.1"
+  }
+}
